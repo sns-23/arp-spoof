@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
     struct attack_ctx *ctx;
     int ret;
     
-    if (argc < 4 && argc % 2) {
+    if (argc < 4 || argc % 2) {
         usage();
         return 0;
     }
