@@ -16,8 +16,8 @@ struct IpHdr final {
     uint16_t ip_sum;         /* checksum */
     Ip ip_src, ip_dst; /* source and dest address */
 
-	Ip dip() { return ip_dst; }
-	Ip sip() { return ip_src; }
+	Ip dip() { return htonl(ip_dst); }
+	Ip sip() { return htonl(ip_src); }
 };
 typedef IpHdr *PIpHdr;
 #pragma pack(pop)

