@@ -145,7 +145,7 @@ static int parse_packet(struct pcap_pkthdr *header, const u_char *packet, struct
         /* Target -> Sender (ARP_REP) => case 2 */
         if (arp_hdr->sip() == info->target_ip && arp_hdr->tip() == info->sender_ip && arp_hdr->op() == ArpHdr::Reply) {
             pr_debug("receive packet (case 2)\n");
-            return 1;
+            return 2;
         }
 
         /* Target -> Sender (ARP_REQ) => case 3 */
