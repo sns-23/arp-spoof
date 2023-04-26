@@ -176,7 +176,7 @@ int relay_packet(struct attack_ctx *ctx, struct info *info, const u_char *packet
 
     eth_hdr = (EthHdr *)packet;
     ip_hdr = (IpHdr *)((char *)eth_hdr + sizeof(EthHdr));
-    if (ip_hdr->dip() != info->target_ip)
+    if (ip_hdr->dip() == ctx->my_ip)
         return 0;
 
     eth_hdr->smac_ = ctx->my_mac;
